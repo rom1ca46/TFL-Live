@@ -8,16 +8,17 @@
 html, body {
   margin:0;
   padding:0;
-  height:100%;
 }
 
+/* ✅ ALLOW SCROLL */
 body {
   background:#0f1115;
   color:#e6e6e6;
   font-family:monospace;
-  overflow:hidden;
   display:flex;
   flex-direction:column;
+  min-height:100vh;
+  overflow-y:auto;
 }
 
 h1 {
@@ -25,24 +26,38 @@ h1 {
   margin:10px 0;
 }
 
+/* CONTROLS */
 .controls {
   text-align:center;
   margin-bottom:10px;
+  flex-wrap:wrap;
 }
 
-select {
-  padding:6px;
-  font-size:16px;
-  margin:0 5px;
+.controls select {
+  background:#1a1d24;
+  color:#e6e6e6;
+  border:1px solid #333;
+  padding:8px 10px;
+  border-radius:6px;
+  font-family:monospace;
+  margin:5px;
+  font-size:14px;
 }
 
+/* ✅ RESPONSIVE GRID */
 .container {
-  flex:1;
   display:grid;
   grid-template-columns:1fr 1fr;
   gap:10px;
   padding:10px;
-  height:calc(var(--vh, 1vh) * 100);
+  box-sizing:border-box;
+}
+
+/* 📱 MOBILE: STACK */
+@media (max-width: 900px) {
+  .container {
+    grid-template-columns:1fr;
+  }
 }
 
 .section {
@@ -53,18 +68,66 @@ select {
   padding:10px;
 }
 
+.section h2 {
+  margin:0 0 6px 0;
+}
+
+/* FLEX CONTENT */
+#status, #flipboard {
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+/* TEXT SCALING */
 .flip-row, .line-status {
   display:flex;
   justify-content:space-between;
-  font-size:clamp(14px, 2.2vh, 28px);
+  align-items:center;
+  font-size:clamp(14px, 2.5vw, 24px);
 }
 
-.left, .right { display:flex; }
+.left { display:flex; flex-wrap:wrap; }
+.right { display:flex; justify-content:flex-end; }
 
+/* FLIP STYLE */
+.char-box {
+  display:inline-block;
+  background:#111;
+  border-radius:2px;
+  padding:2px 4px;
+  margin-right:1px;
+  perspective:600px;
+}
+
+.char-box span {
+  display:block;
+  transform-origin:top;
+  transition:transform 0.25s ease;
+  min-width:10px;
+  text-align:center;
+  font-weight:600;
+  letter-spacing:0.5px;
+}
+
+/* FOOTER */
 .updated {
   text-align:center;
   color:#888;
   font-size:12px;
+  margin:10px 0;
+}
+
+/* 📱 EXTRA SMALL DEVICES */
+@media (max-width: 500px) {
+  .controls select {
+    width:90%;
+    font-size:16px;
+  }
+
+  .flip-row, .line-status {
+    font-size:16px;
+  }
 }
 </style>
 </head>
@@ -98,104 +161,135 @@ select {
 <script>
 
 /* STATIONS */
-const stations = [
- "Abbey Wood","Acton Main Line","Bond Street","Brentwood","Canary Wharf",
- "Chadwell Heath","Custom House","Ealing Broadway","Farringdon","Forest Gate",
- "Gidea Park","Goodmayes","Hanwell","Harold Wood","Hayes & Harlington",
- "Heathrow Terminal 2 & 3","Heathrow Terminal 4","Heathrow Terminal 5",
- "Ilford","Iver","Langley","Liverpool Street","Maidenhead","Manor Park",
- "Maryland","Paddington","Reading","Romford","Seven Kings","Shenfield",
- "Slough","Southall","Stratford","Taplow","Tottenham Court Road",
- "West Drayton","Whitechapel","Woolwich"
-];
+const stations = [ "Abbey Wood","Acton Main Line","Bond Street","Brentwood","Canary Wharf",
+"Chadwell Heath","Custom House","Ealing Broadway","Farringdon","Forest Gate",
+"Gidea Park","Goodmayes","Hanwell","Harold Wood","Hayes & Harlington",
+"Heathrow Terminal 2 & 3","Heathrow Terminal 4","Heathrow Terminal 5",
+"Ilford","Iver","Langley","Liverpool Street","Maidenhead","Manor Park",
+"Maryland","Paddington","Reading","Romford","Seven Kings","Shenfield",
+"Slough","Southall","Stratford","Taplow","Tottenham Court Road",
+"West Drayton","Whitechapel","Woolwich" ];
 
 let selectedStation = "Ealing Broadway";
 let selectedDirection = "eastbound";
 
-/* DROPDOWNS */
+/* CONTROLS */
 function setupControls(){
   const stationSelect = document.getElementById("stationSelect");
   const directionSelect = document.getElementById("directionSelect");
 
-  stations.forEach(s => {
-    const o = document.createElement("option");
-    o.value = s;
-    o.textContent = s;
-    if(s === selectedStation) o.selected = true;
+  stations.forEach(s=>{
+    const o=document.createElement("option");
+    o.value=s;
+    o.textContent=s;
+    if(s===selectedStation) o.selected=true;
     stationSelect.appendChild(o);
   });
 
-  stationSelect.addEventListener("change", e => {
+  stationSelect.onchange = e => {
     selectedStation = e.target.value;
     updateFlipboard();
-  });
+  };
 
-  directionSelect.addEventListener("change", e => {
+  directionSelect.onchange = e => {
     selectedDirection = e.target.value;
     updateFlipboard();
-  });
+  };
 }
-
 setupControls();
 
 /* HELPERS */
+const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 →";
+
 function mins(t){
   return Math.max(0, Math.round((new Date(t)-new Date())/60000));
 }
 
-/* 🚆 FILTER LOGIC */
-function isEastbound(destination){
-  const eastStops = ["Abbey Wood","Shenfield"];
-  return eastStops.some(stop => destination.includes(stop));
+function createCharBox(char,color){
+  const span=document.createElement("span");
+  span.textContent=char;
+  span.style.color=color;
+
+  const box=document.createElement("div");
+  box.className="char-box";
+  box.appendChild(span);
+  return box;
 }
 
-function isWestbound(destination){
-  const westStops = ["Reading","Heathrow","Maidenhead"];
-  return westStops.some(stop => destination.includes(stop));
+function flipChar(span,target,color){
+  span.style.transform="rotateX(-90deg)";
+  setTimeout(()=>{
+    span.textContent=target;
+    span.style.color=color;
+    span.style.transform="rotateX(0deg)";
+  },120);
 }
 
-/* FETCH TRAINS */
+function updateText(container,text,color){
+  const charsArr=text.split('');
+
+  while(container.childNodes.length<charsArr.length){
+    container.appendChild(createCharBox(" ",color));
+  }
+
+  charsArr.forEach((c,i)=>{
+    const span=container.childNodes[i].firstChild;
+    if(span.textContent!==c){
+      flipChar(span,c,color);
+    }
+  });
+
+  while(container.childNodes.length>charsArr.length){
+    container.removeChild(container.lastChild);
+  }
+}
+
+/* DIRECTION */
+function isEastbound(dest){
+  return dest.includes("Abbey Wood") || dest.includes("Shenfield");
+}
+
+function isWestbound(dest){
+  return dest.includes("Reading") || dest.includes("Heathrow") || dest.includes("Maidenhead");
+}
+
+/* FETCH */
 async function fetchTrains(){
-  const res = await fetch("https://api.tfl.gov.uk/Line/elizabeth/Arrivals");
-  const data = await res.json();
+  const res=await fetch("https://api.tfl.gov.uk/Line/elizabeth/Arrivals");
+  const data=await res.json();
 
-  const trains = data
+  return data
     .filter(t =>
       t.stationName &&
       t.stationName.toLowerCase().includes(selectedStation.toLowerCase())
     )
-    .filter(t => {
-      if(selectedDirection === "eastbound"){
-        return isEastbound(t.destinationName);
-      } else {
-        return isWestbound(t.destinationName);
-      }
-    })
+    .filter(t =>
+      selectedDirection==="eastbound"
+        ? isEastbound(t.destinationName)
+        : isWestbound(t.destinationName)
+    )
     .sort((a,b)=>new Date(a.expectedArrival)-new Date(b.expectedArrival))
     .slice(0,6);
-
-  return trains.map(t => ({
-    text: t.destinationName,
-    minsAway: mins(t.expectedArrival)
-  }));
 }
 
 /* RENDER */
 async function updateFlipboard(){
-  const trains = await fetchTrains();
-  const container = document.getElementById("flipboard");
+  const trains=await fetchTrains();
+  const container=document.getElementById("flipboard");
 
-  container.innerHTML = "";
+  container.innerHTML="";
 
-  trains.forEach(t => {
-    const row = document.createElement("div");
-    row.className = "flip-row";
+  trains.forEach(t=>{
+    const row=document.createElement("div");
+    row.className="flip-row";
 
-    const left = document.createElement("div");
-    left.textContent = t.text;
+    const left=document.createElement("div");
+    left.className="left";
+    updateText(left,t.destinationName,"#6950A1");
 
-    const right = document.createElement("div");
-    right.textContent = t.minsAway === 0 ? "Due" : t.minsAway + " min";
+    const right=document.createElement("div");
+    right.className="right";
+    updateText(right,mins(t.expectedArrival)===0?"Due":mins(t.expectedArrival)+" min","#fff");
 
     row.appendChild(left);
     row.appendChild(right);
@@ -205,17 +299,24 @@ async function updateFlipboard(){
 
 /* STATUS */
 async function fetchStatus(){
-  const res = await fetch("https://api.tfl.gov.uk/Line/Mode/tube,elizabeth-line/Status");
-  const data = await res.json();
-  const container = document.getElementById("status");
+  const res=await fetch("https://api.tfl.gov.uk/Line/Mode/tube,elizabeth-line/Status");
+  const data=await res.json();
+  const container=document.getElementById("status");
 
-  container.innerHTML = "";
+  container.innerHTML="";
 
-  data.forEach(line => {
-    const row = document.createElement("div");
-    row.className = "line-status";
+  data.forEach(line=>{
+    const row=document.createElement("div");
+    row.className="line-status";
 
-    row.innerHTML = `<div>${line.name}</div><div>${line.lineStatuses[0].statusSeverityDescription}</div>`;
+    const left=document.createElement("div");
+    updateText(left,line.name,"#fff");
+
+    const right=document.createElement("div");
+    updateText(right,line.lineStatuses[0].statusSeverityDescription,"#4caf50");
+
+    row.appendChild(left);
+    row.appendChild(right);
     container.appendChild(row);
   });
 }
@@ -229,7 +330,7 @@ async function refresh(){
 }
 
 refresh();
-setInterval(refresh, 60000);
+setInterval(refresh,60000);
 
 </script>
 
