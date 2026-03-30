@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>TfL Dashboard</title>
+
+<style>
+html, body {
+  margin:0;
+  padding:0;
+  height:100%;
+}
+
+body {
+  background:#0f1115;
+  color:#e6e6e6;
+  font-family:monospace;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+
+h1 {
+  text-align:center;
+  margin:10px 0;
+  flex:0 0 auto;
+}
+
+.container {
+  flex:1;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  padding:10px;
+  box-sizing:border-box;
+  height:calc(var(--vh, 1vh) * 100);
+}
+
+.section {
+  display:flex;
+  flex-direction:column;
+  background:#1a1d24;
+  border-radius:10px;
+  overflow:hidden;
+  padding:10px;
+}
+
+.section h2 {
+  margin:0 0 6px 0;
+  flex:0 0 auto;
+}
+
+#status, #flipboard {
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-evenly;
+}
+
+.flip-row, .line-status {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-size:clamp(14px, 2.2vh, 28px);
+}
+
+.left { display:flex; }
+.right { display:flex; justify-content:flex-end; }
+
+.char-box {
+  display:inline-block;
+  background:#111;
+  border-radius:2px;
+  padding:1px 3px;
+  margin-right:1px;
+  perspective:600px;
+}
+
+.char-box span {
+  display:block;
+  transform-origin:top;
+  transition:transform 0.25s ease;
+  min-width:10px;
+  text-align:center;
+  font-weight:600;
+  letter-spacing:0.5px;
+}
+
+.updated {
+  text-align:center;
+  color:#888;
+  font-size:clamp(10px,1.5vh,16px);
+  margin:4px 0;
+  flex:0 0 auto;
+}
+</style>
+</head>
+
+<body>
+
+<h1>TfL Dashboard</h1>
+
+<div style="text-align:center; margin-bottom:10px;">
+  <select id="stationSelect" style="padding:6px; font-size:16px;"></select>
+</div>
+
+<div class="container">
+  <div class="section">
+    <h2>Line Status</h2>
+    <div id="status"></div>
+  </div>
+
+  <div class="section">
+    <h2>Departures</h2>
+    <div id="flipboard"></div>
+  </div>
+</div>
+
+<div class="updated" id="updated"></div>
+
+<script>
+
+/* VIEWPORT FIX */
+function setRealViewportHeight() {
+  const vh = window.innerHeight * 0.01;
+  document.documentElement.style.setProperty('--vh', `${vh}px`);
+}
+setRealViewportHeight();
+window.addEventListener('resize', setRealViewportHeight);
+
+/* STATIONS */
+const elizabethStations = [
+  "Abbey Wood","Acton Main Line","Bond Street","Brentwood","Canary Wharf",
+  "Chadwell Heath","Custom House","Ealing Broadway","Farringdon","Forest Gate",
+  "Gidea Park","Goodmayes","Hanwell","Harold Wood","Hayes & Harlington",
+  "Heathrow Terminal 2 & 3","Heathrow Terminal 4","Heathrow Terminal 5",
+  "Ilford","Iver","Langley","Liverpool Street","Maidenhead","Manor Park",
+  "Maryland","Paddington","Reading","Romford","Seven Kings","Shenfield",
+  "Slough","Southall","Stratford","Taplow","Tottenham Court Road",
+  "West Drayton","Whitechapel","Woolwich"
+];
+
+let selectedStation = "Ealing Broadway";
+
+/* DROPDOWN */
+function setupDropdown(){
+  const select = document.getElementById("stationSelect");
+
+  elizabethStations.forEach(station => {
+    const option = document.createElement("option");
+    option.value = station;
+    option.textContent = station;
+    if(station === selectedStation) option.selected = true;
+    select.appendChild(option);
+  });
+
+  select.addEventListener("change", (e) => {
+    selectedStation = e.target.value;
+    updateFlipboard();
+  });
+}
+
+setupDropdown();
+
+/* COLORS */
+const lineColors = {
+  "Elizabeth line":"#6950A1","Elizabeth":"#6950A1"
+};
+
+const shortStations = {
+  "Stratford (London) Rail Station":"Stratford",
+  "Hayes & Harlington Rail Station":"Hayes & Harlington",
+  "Maidenhead Rail Station":"Maidenhead",
+  "Ealing Broadway Rail Station":"Ealing Broadway",
+  "London Paddington Rail Station":"Paddington"
+};
+
+const chars="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 →";
+
+function mins(time){
+  return Math.max(0,Math.round((new Date(time)-new Date())/60000));
+}
+
+function createCharBox(char,color){
+  const span=document.createElement("span");
+  span.textContent=char;
+  span.style.color=color;
+
+  const box=document.createElement("div");
+  box.className="char-box";
+  box.appendChild(span);
+
+  return box;
+}
+
+function flipChar(span,target,color){
+  const delay=Math.random()*60;
+
+  setTimeout(()=>{
+    span.style.transform="rotateX(-90deg)";
+
+    setTimeout(()=>{
+      span.textContent=chars[Math.floor(Math.random()*chars.length)];
+      span.style.color=color;
+    },80);
+
+    setTimeout(()=>{
+      span.textContent=target;
+      span.style.color=color;
+      span.style.transform="rotateX(0deg)";
+    },160);
+
+  },delay);
+}
+
+function updateText(container,text,color,forceFlip=false){
+  container.dataset.text=text;
+  container.dataset.color=color;
+
+  const charsArr=text.split('');
+
+  while(container.childNodes.length<charsArr.length){
+    container.appendChild(createCharBox(" ",color));
+  }
+
+  charsArr.forEach((c,i)=>{
+    const span=container.childNodes[i].firstChild;
+
+    if(forceFlip){
+      flipChar(span,c,color);
+    } else if(span.textContent!==c){
+      flipChar(span,c,color);
+    } else {
+      span.style.color=color;
+    }
+  });
+
+  while(container.childNodes.length>charsArr.length){
+    container.removeChild(container.lastChild);
+  }
+}
+
+/* STATUS */
+async function fetchStatus(){
+  const res=await fetch("https://api.tfl.gov.uk/Line/Mode/tube,elizabeth-line/Status");
+  const data=await res.json();
+  const container=document.getElementById("status");
+
+  if(!container.childNodes.length){
+    data.forEach(()=>{
+      const row=document.createElement("div");
+      row.className="line-status";
+
+      const left=document.createElement("div");
+      const right=document.createElement("div");
+
+      row.appendChild(left);
+      row.appendChild(right);
+      container.appendChild(row);
+    });
+  }
+
+  data.forEach((line,i)=>{
+    const status=line.lineStatuses[0].statusSeverityDescription;
+
+    let color="#4caf50";
+    if(status.includes("Minor")) color="#ffb300";
+    if(status.includes("Severe")||status.includes("Suspended")) color="#ff5252";
+
+    const row=container.childNodes[i];
+
+    updateText(row.children[0],line.name,"#fff");
+    updateText(row.children[1],status,color);
+  });
+}
+
+/* UPDATED TRAINS FUNCTION */
+async function fetchTrains(){
+  const res=await fetch("https://api.tfl.gov.uk/Line/elizabeth/Arrivals");
+  const data=await res.json();
+
+  const trains=data
+    .filter(t =>
+      t.stationName &&
+      t.stationName.toLowerCase().includes(selectedStation.toLowerCase())
+    )
+    .sort((a,b)=>new Date(a.expectedArrival)-new Date(b.expectedArrival))
+    .slice(0,6);
+
+  return trains.map(t=>({
+    text: shortStations[t.destinationName] || t.destinationName,
+    color: lineColors["Elizabeth"],
+    minsAway: mins(t.expectedArrival)
+  }));
+}
+
+/* FLIPBOARD */
+async function updateFlipboard(){
+  const trains=await fetchTrains();
+  const container=document.getElementById("flipboard");
+
+  if(!container.childNodes.length){
+    for(let i=0;i<6;i++){
+      const row=document.createElement("div");
+      row.className="flip-row";
+
+      const left=document.createElement("div");
+      const right=document.createElement("div");
+
+      row.appendChild(left);
+      row.appendChild(right);
+      container.appendChild(row);
+    }
+  }
+
+  trains.forEach((d,i)=>{
+    const row=container.childNodes[i];
+    updateText(row.children[0],d.text,d.color);
+    updateText(row.children[1],d.minsAway===0?"Due":d.minsAway+" min","#fff");
+  });
+}
+
+/* REFRESH */
+async function refresh(){
+  await fetchStatus();
+  await updateFlipboard();
+  document.getElementById("updated").innerText="Updated: "+new Date().toLocaleTimeString();
+}
+
+refresh();
+setInterval(refresh,60000);
+
+</script>
+
+</body>
+</html>
